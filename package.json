@@ -1,0 +1,31 @@
+{
+  "name": "blog-list-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ouliana/blog-list-app.git"
+  },
+  "author": "Ouliana Kotik",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ouliana/blog-list-app/issues"
+  },
+  "homepage": "https://github.com/ouliana/blog-list-app#readme",
+  "devDependencies": {
+    "dotenv": "^16.0.3",
+    "nodemon": "^2.0.20"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "joi": "^17.7.1",
+    "nano": "^10.1.2"
+  }
+}
