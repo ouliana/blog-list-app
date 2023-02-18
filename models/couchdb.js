@@ -1,7 +1,5 @@
-//const nano = require('nano')(COUCH_URI);
-
-//const nano = require('nano')(process.env.COUCHDB_URI);
-const nano = require('nano')('http://admin:sxfng64@127.0.0.1:5984');
+const config = require('../utils/config');
+const nano = require('nano')(config.COUCHDB_URI);
 
 const blogs = nano.use('blogs');
 
