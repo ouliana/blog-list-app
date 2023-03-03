@@ -5,6 +5,7 @@ const schema = Joi.object({
   author: Joi.string().min(3).required(),
   url: Joi.string().min(3).required(),
   likes: Joi.number(),
+  date: Joi.string(),
 });
 
 const validate = blog => {

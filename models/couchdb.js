@@ -1,57 +1,49 @@
+require('express-async-errors');
 const config = require('../utils/config');
 const nano = require('nano')(config.COUCHDB_URI);
 
-const blogs = nano.use('blogs');
+const blogs = nano.use(config.DB_NAME);
 
 const create = async blog => {
-  try {
-    const response = await blogs.insert(blog);
-    console.log(response);
-    const doc = await blogs.get(response.id);
-    return doc;
-  } catch (err) {
-    throw new Error(err);
-  }
+  const response = await blogs.insert(blog);
+  const doc = await blogs.get(response.id, { include_docs: true });
+  ({ _id: doc.id, _rev: doc.rev } = doc);
+  delete doc._id;
+  delete doc._rev;
+  return doc;
 };
 
 const getAll = async () => {
-  try {
-    const body = await blogs.view('blog', 'byid', { include_docs: true });
-    return body.rows;
-  } catch (err) {
-    throw new Error(err);
-  }
+  const body = await blogs.view('blog', 'bydate', { include_docs: true });
+  const response = body.rows.map(entry => {
+    const doc = entry.doc;
+    ({ _id: doc.id, _rev: doc.rev } = doc);
+    delete doc._id;
+    delete doc._rev;
+    return doc;
+  });
+  return response;
 };
 
 const getById = async id => {
-  try {
-    const doc = await blogs.get(id);
-    return doc;
-  } catch (err) {
-    throw new Error(err);
-  }
+  const doc = await blogs.get(id);
+  ({ _id: doc.id, _rev: doc.rev } = doc);
+  delete doc._id;
+  delete doc._rev;
+  return doc;
 };
 
 const destroy = async id => {
-  try {
-    const doc = await blogs.get(id);
-    console.log(doc._id, doc._rev);
-    await blogs.destroy(doc._id, doc._rev);
-  } catch (err) {
-    throw new Error(err);
-  }
+  const entry = await blogs.get(id);
+  await blogs.destroy(entry._id, entry._rev);
 };
 
-update = async (id, fieldName, newValue) => {
-  try {
-    const response = await blogs.atomic('note', 'inplace', id, {
-      field: fieldName,
-      value: newValue,
-    });
-    return response;
-  } catch (err) {
-    throw new Error(err);
-  }
+const update = async (id, fieldName, newValue) => {
+  const response = await blogs.atomic('blog', 'inplace', id, {
+    field: fieldName,
+    value: newValue,
+  });
+  return response;
 };
 
 module.exports = {
