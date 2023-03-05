@@ -2,10 +2,11 @@ require('express-async-errors');
 const supertest = require('supertest');
 const app = require('../app');
 const api = supertest(app);
-const helper = require('./test_helper');
+const helper = require('./blog_test_helper');
+const initHelper = require('./helper');
 
 beforeEach(async () => {
-  await helper.initialize();
+  await initHelper.initialize();
 });
 
 describe('when there is initially some notes inserted', () => {
@@ -18,7 +19,7 @@ describe('when there is initially some notes inserted', () => {
 
   test('all blogs are returned', async () => {
     const response = await api.get('/api/blogs');
-    expect(response.body).toHaveLength(helper.initialBlogs.length);
+    expect(response.body).toHaveLength(initHelper.initialBlogs.length);
   });
 
   test('all blogs have unique identifier property "id"', async () => {
@@ -36,9 +37,10 @@ describe('inserting a new blog', () => {
       .expect('Content-Type', /application\/json/);
 
     const blogsAtEnd = await helper.blogsInDb();
-    expect(blogsAtEnd).toHaveLength(helper.initialBlogs.length + 1);
+    expect(blogsAtEnd).toHaveLength(initHelper.initialBlogs.length + 1);
 
     const finder = item => item.title === helper.canonic;
+
     const id = blogsAtEnd.find(finder).id;
     const blog = await helper.blogToCompare(id);
 
@@ -49,9 +51,11 @@ describe('inserting a new blog', () => {
     await api.post('/api/blogs').send(helper.nonExistingLikes);
 
     const blogsAtEnd = await helper.blogsInDb();
+    console.log('blogsAtEnd: ', blogsAtEnd);
     const finder = item => item.title === helper.canonic;
-    const id = blogsAtEnd.find(finder).id;
-    const blog = await helper.blogById(id);
+    const blog = blogsAtEnd.find(finder);
+
+    console.log('blog found: ', blog);
 
     expect(blog.likes).toBe(0);
   });
@@ -71,7 +75,7 @@ describe('deletion of a blog', () => {
     await api.delete(`/api/blogs/${blogToDelete.id}`).expect(204);
 
     const blogsAtEnd = await helper.blogsInDb();
-    expect(blogsAtEnd).toHaveLength(helper.initialBlogs.length - 1);
+    expect(blogsAtEnd).toHaveLength(initHelper.initialBlogs.length - 1);
 
     const contents = blogsAtEnd.map(r => r.title);
     expect(contents).not.toContain(blogToDelete.title);
@@ -82,15 +86,14 @@ describe('updating a blog', () => {
   test('succeeds with statuscode 200 if data is valid', async () => {
     const blogsAtStart = await helper.blogsInDb();
 
-    const blogToUpdate = blogsAtStart[0];
-    const id = blogToUpdate.id;
-    delete blogToUpdate.id;
-    delete blogToUpdate.rev;
-    blogToUpdate.likes = 12;
+    const blogToUpdate = {
+      ...blogsAtStart[0],
+      likes: 12,
+    };
 
-    await api.put(`/api/blogs/${id}`).send(blogToUpdate);
+    await api.put(`/api/blogs/${blogToUpdate.id}`).send(blogToUpdate);
 
-    const updatedBlog = await helper.blogById(id);
+    const updatedBlog = await helper.blogById(blogToUpdate.id);
 
     if (blogToUpdate.likes) {
       expect(updatedBlog.likes).toBe(blogToUpdate.likes);
