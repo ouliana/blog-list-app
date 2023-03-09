@@ -17,27 +17,36 @@ blogsRouter.get('/:id', async (req, res) => {
   }
 });
 
-blogsRouter.delete('/:id', async (req, res) => {
-  await blogs.destroy(req.params.id);
-  res.status(204).end();
+blogsRouter.delete('/:id', async (request, response) => {
+  await blogs.destroy(request.params.id);
+
+  const user = await common.findById(request.user.id, 'users');
+  const blogsToUpdate = user.blogs.filter(
+    blog => blog.id !== request.params.id
+  );
+
+  await users.updateBlogs(user.id, blogsToUpdate);
+
+  response.status(204).end();
 });
 
-blogsRouter.post('/', async (request, res) => {
+blogsRouter.post('/', async (request, response) => {
   const body = request.body;
 
-  const username = 'michaelchan';
-  const user = await users.findUser(username);
-
+  const user = await common.findById(request.user.id, 'users');
   const blog = {
     ...body,
-    date: body.date ? body.date : new Date(),
-    likes: body.likes ? body.likes : 0,
+    date: body.date ?? new Date(),
+    likes: body.likes ?? 0,
     user: user.id,
   };
 
   const createdBlog = await blogs.save(blog);
+  const blogsToUpdate = user.blogs.concat(createdBlog.id);
 
-  res.status(201).send(createdBlog);
+  await users.updateBlogs(user.id, blogsToUpdate);
+
+  response.status(201).json(createdBlog);
 });
 
 blogsRouter.put('/:id', async (request, response) => {

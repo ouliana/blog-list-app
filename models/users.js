@@ -47,6 +47,14 @@ const findUser = async username => {
   return doc.rows[0].value;
 };
 
+const getUserInfo = async username => {
+  const doc = await users.view('user', 'user_info', {
+    key: username,
+  });
+
+  return doc.rows[0].value;
+};
+
 const find = async () => {
   const body = await users.view('user', 'by_username', { include_docs: true });
 
@@ -77,16 +85,10 @@ const destroy = async id => {
   await users.destroy(doc._id, doc._rev);
 };
 
-const updateNotes = async function (id, noteId) {
-  const user = await users.get(id);
-
-  console.log('User: ', user);
-
-  const notes = user.notes?.concat(noteId) || [noteId];
-
+const updateBlogs = async function (id, blogs) {
   await users.atomic('user', 'inplace', id, {
-    field: 'notes',
-    value: notes,
+    field: 'blogs',
+    value: blogs,
   });
 };
 
@@ -96,6 +98,7 @@ module.exports = {
   save,
   find,
   findUser,
+  getUserInfo,
   destroy,
-  updateNotes,
+  updateBlogs,
 };

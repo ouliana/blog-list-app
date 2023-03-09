@@ -22,7 +22,7 @@ const findById = async (id, dbName) => {
   const db = nano.use(name);
   const doc = await db.view(designName, 'by_id', { key: id });
 
-  return doc;
+  return doc.rows[0].value;
 };
 
 module.exports = {

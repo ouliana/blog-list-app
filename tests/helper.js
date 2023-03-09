@@ -105,6 +105,9 @@ const userDesignDoc = {
     idbyusername: {
       map: 'function(doc){ emit(doc.username, doc._id)}',
     },
+    user_info: {
+      map: 'function(doc){ emit(doc.username, {id: doc._id, username: doc.username, name: doc.name, passwordHash: doc.passwordHash})}',
+    },
   },
   updates: {
     inplace:
@@ -142,7 +145,7 @@ const findUserBlogs = async () => {
     )
   );
 
-  return usersBlogs.map(blog => blog.rows.map(r => r.value));
+  return usersBlogs.map(blog => blog.rows.map(r => r.value.id));
 };
 
 const saveUsers = async () => {

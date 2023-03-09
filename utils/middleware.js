@@ -1,4 +1,6 @@
+const jwt = require('jsonwebtoken');
 const logger = require('./logger');
+const common = require('../models/common');
 
 const requestLogger = (request, response, next) => {
   logger.info('Method:', request.method);
@@ -8,19 +10,43 @@ const requestLogger = (request, response, next) => {
   next();
 };
 
+const tokenExtractor = (request, response, next) => {
+  const authorization = request.get('authorization');
+
+  if (authorization && authorization.startsWith('bearer')) {
+    request.token = authorization.split(' ')[1];
+  }
+
+  next();
+};
+
+const userExtractor = async (request, response, next) => {
+  const decodedToken = jwt.verify(request.token, process.env.SECRET);
+
+  if (!decodedToken.id) {
+    return response.status(401).json({ error: 'token invalid' });
+  }
+
+  request.user = await common.findById(decodedToken.id, 'users');
+
+  next();
+};
+
 const unknownEndpoint = (request, response) => {
   response.status(404).send({ error: 'unknown endpoint' });
 };
 
-const errorHandler = (error, req, res, next) => {
+const errorHandler = (error, request, response, next) => {
   console.log('error:', error);
   if (['ValidationError', 'UniquenessError'].includes(error.name)) {
-    res.status(400).send(error);
+    response.status(400).send(error);
   } else if (error.statusCode) {
     console.log('! error.statusCode: ', error.statusCode);
-    res.status(error.statusCode).send({ error: `${error.reason}` });
+    response.status(error.statusCode).send({ error: `${error.reason}` });
+  } else if (error.name === 'JsonWebTokenError') {
+    return response.status(400).json({ error: error.message });
   } else {
-    res.status(500).send({ error: `${error.reason}` });
+    response.status(500).send({ error: `${error.reason}` });
   }
 
   next(error);
@@ -28,6 +54,8 @@ const errorHandler = (error, req, res, next) => {
 
 module.exports = {
   requestLogger,
+  tokenExtractor,
+  userExtractor,
   unknownEndpoint,
   errorHandler,
 };
