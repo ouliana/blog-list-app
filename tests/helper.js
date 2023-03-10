@@ -1,4 +1,5 @@
 require('express-async-errors');
+const jwt = require('jsonwebtoken');
 const config = require('../utils/config');
 const bcrypt = require('bcrypt');
 const nano = require('nano')(config.COUCHDB_URI);
@@ -107,6 +108,9 @@ const userDesignDoc = {
     },
     user_info: {
       map: 'function(doc){ emit(doc.username, {id: doc._id, username: doc.username, name: doc.name, passwordHash: doc.passwordHash})}',
+    },
+    user_for_test_api: {
+      map: 'function(doc){ emit(doc.name, {id: doc._id, blogs: doc.blogs})}',
     },
   },
   updates: {
@@ -240,8 +244,25 @@ const initialize = async () => {
   await populateBlogs();
 };
 
+const getToken = async () => {
+  const users = nano.use(config.DB_USERS);
+  const username = 'michaelchan';
+
+  const response = await users.view('user', 'user_info', {
+    key: username,
+  });
+
+  const userForToken = {
+    username: response.rows[0].value.username,
+    id: response.rows[0].value.id,
+  };
+
+  return jwt.sign(userForToken, process.env.SECRET);
+};
+
 module.exports = {
   initialBlogs,
   initialUsers,
   initialize,
+  getToken,
 };

@@ -29,9 +29,16 @@ describe('when there is initially some notes inserted', () => {
 });
 
 describe('inserting a new blog', () => {
+  let token;
+
+  beforeEach(async () => {
+    token = await initHelper.getToken();
+  });
+
   test('succeds with valid data', async () => {
     await api
       .post('/api/blogs')
+      .set('Authorization', `bearer ${token}`)
       .send(helper.newBlog)
       .expect(201)
       .expect('Content-Type', /application\/json/);
@@ -44,11 +51,16 @@ describe('inserting a new blog', () => {
     const id = blogsAtEnd.find(finder).id;
     const blog = await helper.blogToCompare(id);
 
+    console.log('blog: ', blog);
+
     expect(blog).toEqual(helper.newBlog);
   });
 
   test('succeeds with default data for missing property', async () => {
-    await api.post('/api/blogs').send(helper.nonExistingLikes);
+    await api
+      .post('/api/blogs')
+      .set('Authorization', `bearer ${token}`)
+      .send(helper.nonExistingLikes);
 
     const blogsAtEnd = await helper.blogsInDb();
     console.log('blogsAtEnd: ', blogsAtEnd);
@@ -61,21 +73,41 @@ describe('inserting a new blog', () => {
   });
 
   test('fails with statuscode 400 for invalid data', async () => {
-    await api.post('/api/blogs').send(helper.missingTitle).expect(400);
-    await api.post('/api/blogs').send(helper.missingAuthor).expect(400);
+    await api
+      .post('/api/blogs')
+      .set('Authorization', `bearer ${token}`)
+      .send(helper.missingTitle)
+      .expect(400);
+    await api
+      .post('/api/blogs')
+      .set('Authorization', `bearer ${token}`)
+      .send(helper.missingAuthor)
+      .expect(400);
   });
 });
 
 describe('deletion of a blog', () => {
+  let token;
+  let blogId;
+
+  beforeEach(async () => {
+    token = await initHelper.getToken();
+
+    blogId = await helper.addBlogToDelete();
+  });
+
   test('succeeds with status code 204 if id is valid', async () => {
     const blogsAtStart = await helper.blogsInDb();
 
-    const blogToDelete = blogsAtStart[0];
+    const blogToDelete = blogsAtStart.filter(blog => blog.id === blogId)[0];
 
-    await api.delete(`/api/blogs/${blogToDelete.id}`).expect(204);
+    await api
+      .delete(`/api/blogs/${blogId}`)
+      .set('Authorization', `bearer ${token}`)
+      .expect(204);
 
     const blogsAtEnd = await helper.blogsInDb();
-    expect(blogsAtEnd).toHaveLength(initHelper.initialBlogs.length - 1);
+    expect(blogsAtEnd).toHaveLength(blogsAtStart.length - 1);
 
     const contents = blogsAtEnd.map(r => r.title);
     expect(contents).not.toContain(blogToDelete.title);

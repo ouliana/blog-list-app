@@ -1,4 +1,5 @@
 const blogsRouter = require('express').Router();
+const middleware = require('../utils/middleware');
 const blogs = require('../models/blogs');
 const users = require('../models/users');
 const common = require('../models/common');
@@ -17,37 +18,48 @@ blogsRouter.get('/:id', async (req, res) => {
   }
 });
 
-blogsRouter.delete('/:id', async (request, response) => {
-  await blogs.destroy(request.params.id);
+blogsRouter.delete(
+  '/:id',
+  middleware.tokenExtractor,
+  middleware.userExtractor,
+  async (request, response) => {
+    console.log('request.user: ', request.user);
+    await blogs.destroy(request.params.id);
 
-  const user = await common.findById(request.user.id, 'users');
-  const blogsToUpdate = user.blogs.filter(
-    blog => blog.id !== request.params.id
-  );
+    const user = await common.findById(request.user.id, 'users');
+    const blogsToUpdate = user.blogs.filter(
+      blog => blog.id !== request.params.id
+    );
 
-  await users.updateBlogs(user.id, blogsToUpdate);
+    await users.updateBlogs(user.id, blogsToUpdate);
 
-  response.status(204).end();
-});
+    response.status(204).end();
+  }
+);
 
-blogsRouter.post('/', async (request, response) => {
-  const body = request.body;
+blogsRouter.post(
+  '/',
+  middleware.tokenExtractor,
+  middleware.userExtractor,
+  async (request, response) => {
+    const body = request.body;
 
-  const user = await common.findById(request.user.id, 'users');
-  const blog = {
-    ...body,
-    date: body.date ?? new Date(),
-    likes: body.likes ?? 0,
-    user: user.id,
-  };
+    const user = await common.findById(request.user.id, 'users');
+    const blog = {
+      ...body,
+      date: body.date ?? new Date(),
+      likes: body.likes ?? 0,
+      user: user.id,
+    };
 
-  const createdBlog = await blogs.save(blog);
-  const blogsToUpdate = user.blogs.concat(createdBlog.id);
+    const createdBlog = await blogs.save(blog);
+    const blogsToUpdate = user.blogs.concat(createdBlog.id);
 
-  await users.updateBlogs(user.id, blogsToUpdate);
+    await users.updateBlogs(user.id, blogsToUpdate);
 
-  response.status(201).json(createdBlog);
-});
+    response.status(201).json(createdBlog);
+  }
+);
 
 blogsRouter.put('/:id', async (request, response) => {
   const updatedBlog = await blogs.update(request);

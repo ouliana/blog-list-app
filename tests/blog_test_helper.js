@@ -2,33 +2,35 @@ require('express-async-errors');
 const config = require('../utils/config');
 const nano = require('nano')(config.COUCHDB_URI);
 
-const canonic = 'Design for mankind';
+const canonic = 'Write component tests in 3 simple steps';
 
 const newBlog = {
-  title: canonic,
-  author: 'Erin Loechner',
-  url: 'https://designformankind.com/blog/',
-  likes: 50,
-  date: '2023/02/15 15:52:20',
+  title: 'Write component tests in 3 simple steps',
+  author: 'Michael Chan',
+  url: 'https://medium.com/storybookjs/write-component-tests-in-3-simple-steps-bcb2975bda36',
+  date: '2023-03-09T16:38:06.705Z',
+  likes: 0,
 };
 
+const testName = 'Michael Chan';
+
 const nonExistingLikes = {
-  title: canonic,
-  author: 'Erin Loechner',
-  url: 'https://designformankind.com/blog/',
-  date: '2023/02/15 15:52:20',
+  title: 'Write component tests in 3 simple steps',
+  author: 'Michael Chan',
+  url: 'https://medium.com/storybookjs/write-component-tests-in-3-simple-steps-bcb2975bda36',
+  date: '2023-03-09T16:38:06.705Z',
 };
 
 const missingTitle = {
-  author: 'Erin Loechner',
-  url: 'https://designformankind.com/blog/',
-  date: '2023/02/15 15:52:20',
+  author: 'Michael Chan',
+  url: 'https://medium.com/storybookjs/write-component-tests-in-3-simple-steps-bcb2975bda36',
+  date: '2023-03-09T16:38:06.705Z',
 };
 
 const missingAuthor = {
-  title: canonic,
-  url: 'https://designformankind.com/blog/',
-  date: '2023/02/15 15:52:20',
+  title: 'Write component tests in 3 simple steps',
+  url: 'https://medium.com/storybookjs/write-component-tests-in-3-simple-steps-bcb2975bda36',
+  date: '2023-03-09T16:38:06.705Z',
 };
 
 const nonExistingId = async () => {
@@ -73,9 +75,35 @@ const blogToCompare = async id => {
   delete blog.rev;
   delete blog.user;
 
-  console.log('blog to compare with: ', blog);
-
   return blog;
+};
+
+const userIdByName = async name => {
+  const db = nano.use(config.DB_USERS);
+  const doc = await db.view('user', 'user_for_test_api', {
+    key: name,
+  });
+
+  return doc.rows[0].value;
+};
+
+const addBlogToDelete = async () => {
+  const dbBlogs = nano.use(config.DB_NAME);
+  const dbUsers = nano.use(config.DB_USERS);
+
+  const insertedBlog = await dbBlogs.insert(newBlog);
+
+  const user = await userIdByName(testName);
+
+  console.log('user in addBlogToDelete: ', user);
+  const blogsToUpdate = user.blogs.concat(insertedBlog.id);
+
+  await dbUsers.atomic('user', 'inplace', user.id, {
+    field: 'blogs',
+    value: blogsToUpdate,
+  });
+
+  return insertedBlog.id;
 };
 
 module.exports = {
@@ -88,4 +116,5 @@ module.exports = {
   blogsInDb,
   blogById,
   blogToCompare,
+  addBlogToDelete,
 };
