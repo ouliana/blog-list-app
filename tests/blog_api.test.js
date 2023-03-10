@@ -9,7 +9,7 @@ beforeEach(async () => {
   await initHelper.initialize();
 });
 
-describe('when there is initially some notes inserted', () => {
+describe('when there is initially some blogs inserted', () => {
   test('blogs are return as json', async () => {
     await api
       .get('/api/blogs')
@@ -83,6 +83,10 @@ describe('inserting a new blog', () => {
       .set('Authorization', `bearer ${token}`)
       .send(helper.missingAuthor)
       .expect(400);
+  });
+
+  test('fails with statuscode 401 without valid token', async () => {
+    await api.post('/api/blogs').send(helper.newBlog).expect(401);
   });
 });
 
