@@ -1,4 +1,5 @@
 require('express-async-errors');
+const blogs = require('../models/blogs');
 const config = require('../utils/config');
 const nano = require('nano')(config.COUCHDB_URI);
 
@@ -8,7 +9,7 @@ const newBlog = {
   title: 'Write component tests in 3 simple steps',
   author: 'Michael Chan',
   url: 'https://medium.com/storybookjs/write-component-tests-in-3-simple-steps-bcb2975bda36',
-  date: '2023-03-09T16:38:06.705Z',
+  // date: '2023-03-09T16:38:06.705Z',
   likes: 0,
 };
 
@@ -51,56 +52,39 @@ const nonExistingId = async () => {
 };
 
 const blogsInDb = async () => {
-  const blogs = nano.use(config.DB_NAME);
+  const dbBlogs = nano.use(config.DB_NAME);
+  const data = await dbBlogs.view('blog', 'to_show');
 
-  const body = await blogs.view('blog', 'by_date');
-
-  return body.rows.map(row => row.value);
-};
-
-const blogById = async id => {
-  const blogs = nano.use(config.DB_NAME);
-
-  const body = await blogs.view('blog', 'by_id', { key: id });
-
-  return body.rows[0].value;
+  return data.rows.map(row => row.value);
 };
 
 const blogToCompare = async id => {
-  const blogs = nano.use(config.DB_NAME);
-
-  const response = await blogs.view('blog', 'by_id', { key: id });
-  const blog = response.rows[0].value;
-  delete blog.id;
-  delete blog.rev;
-  delete blog.user;
-
+  const dbBlogs = nano.use(config.DB_NAME);
+  const data = await dbBlogs.view('blog', 'for_test_to_compare', { key: id });
+  const blog = data.rows[0].value;
+  delete blog.date;
   return blog;
 };
 
-const userIdByName = async name => {
-  const db = nano.use(config.DB_USERS);
-  const doc = await db.view('user', 'user_for_test_api', {
-    key: name,
-  });
+const blogById = async id => {
+  const dbBlogs = nano.use(config.DB_NAME);
+  const data = await dbBlogs.view('blog', 'to_show', { key: id });
 
-  return doc.rows[0].value;
+  return data.rows[0].value;
 };
 
 const addBlogToDelete = async () => {
-  const dbBlogs = nano.use(config.DB_NAME);
+  const insertedBlog = await blogs.save(newBlog);
+
   const dbUsers = nano.use(config.DB_USERS);
+  const data = await dbUsers.view('user', 'for_test_api', { key: testName });
+  const user = data.rows[0].value;
 
-  const insertedBlog = await dbBlogs.insert(newBlog);
-
-  const user = await userIdByName(testName);
-
-  console.log('user in addBlogToDelete: ', user);
-  const blogsToUpdate = user.blogs.concat(insertedBlog.id);
+  const updatedUserBlogs = user.blogs.concat(insertedBlog.id);
 
   await dbUsers.atomic('user', 'inplace', user.id, {
     field: 'blogs',
-    value: blogsToUpdate,
+    value: updatedUserBlogs,
   });
 
   return insertedBlog.id;
@@ -114,7 +98,7 @@ module.exports = {
   nonExistingLikes,
   nonExistingId,
   blogsInDb,
-  blogById,
-  blogToCompare,
   addBlogToDelete,
+  blogToCompare,
+  blogById,
 };

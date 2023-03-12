@@ -10,12 +10,9 @@ beforeEach(async () => {
 });
 
 describe('when there is initially several users in db', () => {
-  beforeEach(async () => {
-    await initHelper.initialize();
-  });
-
   test('creation succeeds with a fresh username', async () => {
     const usersAtStart = await helper.usersInDb();
+
     const newUser = {
       username: 'mluukkai',
       name: 'Matti Luukkainen',

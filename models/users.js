@@ -1,12 +1,12 @@
 require('express-async-errors');
+const bcrypt = require('bcrypt');
 const config = require('../utils/config');
 const nano = require('nano')(config.COUCHDB_URI);
 const Joi = require('joi');
 const UniquenessError = require('../utils/errors/uniqueness_error');
 const ValidationError = require('../utils/errors/validation_error');
-const common = require('../models/common');
 
-const users = nano.use(config.DB_USERS);
+const dbUsers = nano.use(config.DB_USERS);
 
 const schema = Joi.object({
   username: Joi.string().min(3).required(),
@@ -25,68 +25,83 @@ const validate = user => {
 };
 
 const isUnique = async username => {
-  const response = await users.view('user', 'idbyusername', { key: username });
+  const response = await dbUsers.view('user', 'id_by_username', {
+    key: username,
+  });
 
   if (response.rows.length) {
     throw new UniquenessError('expected `username` to be unique');
   }
 };
 
-const findBlogs = async blogsArray => {
-  const response = await Promise.all(
-    blogsArray.map(n => common.findById(n, 'blogs'))
-  );
-  return response;
-};
+const findUserBlogs = async ids => {
+  const dbBlogs = nano.use(config.DB_NAME);
 
-const findUser = async username => {
-  const doc = await users.view('user', 'by_username', {
-    key: username,
+  const promises = ids.map(id => {
+    const data = dbBlogs.view('blog', 'for_user', { key: id });
+    return data.rows[0].value;
   });
 
-  return doc.rows[0].value;
+  const result = await Promise.all(promises);
+
+  return result;
 };
 
-const getUserInfo = async username => {
-  const doc = await users.view('user', 'user_info', {
-    key: username,
-  });
+const findOne = async (id, view) => {
+  const doc = await dbUsers.view('user', view, { key: id });
+  if (!doc.rows.length) return null;
 
   return doc.rows[0].value;
 };
 
 const find = async () => {
-  const body = await users.view('user', 'by_username', { include_docs: true });
+  const data = await dbUsers.view('user', 'to_show');
 
-  const returnedUsers = Promise.all(
-    body.rows.map(async r => {
-      console.log('r.value: ', r.value);
-      const user = r.value;
-      if (r.value.blogs.length > 0) {
-        const userBlogs = await findBlogs(r.value.blogs);
-        user.blogs = userBlogs;
-      }
-      return user;
-    })
-  );
+  const promises = data.rows.map(async row => {
+    if (row.value.blogs.length > 0) {
+      const userBlogs = await findUserBlogs(row.value.blogs);
+      row.value.blogs = userBlogs;
+    }
+    return row.value;
+  });
+
+  const returnedUsers = await Promise.all(promises);
 
   return returnedUsers;
 };
 
 const save = async user => {
-  const response = await users.insert(user);
-  const doc = await users.view('user', 'by_id', { key: response.id });
+  const validation = validate(user);
+  if (validation.error) throw new Error(validation.error);
 
-  return doc.rows[0].value;
+  const saltRounds = 10;
+  user.passwordHash = await bcrypt.hash(user.password, saltRounds);
+  delete user.password;
+
+  const response = await dbUsers.insert(user);
+  const data = await dbUsers.view('user', 'to_show', {
+    key: response.id,
+  });
+
+  return data.rows[0].value;
 };
 
 const destroy = async id => {
-  const doc = await users.get(id);
-  await users.destroy(doc._id, doc._rev);
+  const doc = await dbUsers.get(id);
+  await dbUsers.destroy(doc._id, doc._rev);
 };
 
-const updateBlogs = async function (id, blogs) {
-  await users.atomic('user', 'inplace', id, {
+const updateBlogs = async (id, blogId, action) => {
+  console.log({ id, blogId, action });
+  const data = await dbUsers.view('user', 'for_api', { key: id });
+  const currentBlogs = data.rows[0].value;
+
+  const blogs =
+    action === 'insert'
+      ? currentBlogs.concat(blogId)
+      : currentBlogs.filter(blog => blog.id !== blogId);
+
+  await dbUsers.atomic('user', 'inplace', id, {
     field: 'blogs',
     value: blogs,
   });
@@ -97,8 +112,7 @@ module.exports = {
   validate,
   save,
   find,
-  findUser,
-  getUserInfo,
+  findOne,
   destroy,
   updateBlogs,
 };

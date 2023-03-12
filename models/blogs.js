@@ -3,7 +3,6 @@ const config = require('../utils/config');
 const nano = require('nano')(config.COUCHDB_URI);
 const Joi = require('joi');
 const ValidationError = require('../utils/errors/validation_error');
-const common = require('../models/common');
 
 const schema = Joi.object({
   title: Joi.string().min(3).required(),
@@ -17,7 +16,6 @@ const schema = Joi.object({
 const validate = blog => {
   const result = schema.validate(blog, { abortEarly: false });
   if (result.error) {
-    console.log('Error in validation: ', result.error);
     const message = result.error.details.map(d => d.message).join(', ');
     result.error = message;
     throw new ValidationError(message);
@@ -25,56 +23,83 @@ const validate = blog => {
   return result;
 };
 
-const blogs = nano.use(config.DB_NAME);
+const dbBlogs = nano.use(config.DB_NAME);
+
+const find = async () => {
+  const dbUsers = nano.use(config.DB_USERS);
+
+  const data = await dbBlogs.view('blog', 'to_show');
+
+  const promises = data.rows.map(async row => {
+    const userInfo = await dbUsers.view('user', 'for_blog', {
+      key: row.value.user,
+    });
+    return {
+      ...row.value,
+      user: userInfo.rows[0].value,
+    };
+  });
+
+  const returnedNotes = await Promise.all(promises);
+
+  return returnedNotes;
+};
+
+const findOne = async (id, view) => {
+  const dbUsers = nano.use(config.DB_USERS);
+
+  const doc = await dbBlogs.view('blog', view, { key: id });
+  if (!doc.rows.length) return null;
+
+  const blog = doc.rows[0].value;
+
+  const userInfo = await dbUsers.view('user', 'for_blog', {
+    key: blog.user,
+  });
+
+  return {
+    ...blog,
+    user: userInfo.rows[0].value,
+  };
+};
 
 const save = async blog => {
   validate(blog);
 
-  const response = await blogs.insert(blog);
+  const response = await dbBlogs.insert(blog);
 
-  const savedBlog = await blogs.view('blog', 'by_id', { key: response.id });
+  const savedBlog = await dbBlogs.view('blog', 'to_show', {
+    key: response.id,
+  });
 
   return savedBlog.rows[0].value;
-};
-
-const find = async () => {
-  const blogsFromDb = await blogs.view('blog', 'by_date');
-
-  const blogsToReturn = Promise.all(
-    blogsFromDb.rows.map(async r => {
-      r.value.user = await common.findById(r.value.user, 'users');
-      return r.value;
-    })
-  );
-
-  return blogsToReturn;
 };
 
 const destroy = async id => {
-  const entry = await blogs.get(id);
-  await blogs.destroy(entry._id, entry._rev);
+  const doc = await dbBlogs.get(id);
+  const result = await dbBlogs.destroy(doc._id, doc._rev);
+  return result;
 };
 
 const update = async request => {
-  const body = request.body;
+  validate(request.body);
 
-  const { url, title, author, date, user, likes } = body;
-  validate({ url, title, author, date, user, likes });
+  await dbBlogs.atomic('blog', 'inplace', request.params.id, {
+    field: 'likes',
+    value: request.body.likes,
+  });
 
-  ({ id: body._id, rev: body._rev } = body);
-  delete body.id;
-  delete body.rev;
+  const updatedBlog = await dbBlogs.view('blog', 'to_show', {
+    key: request.params.id,
+  });
 
-  const response = await blogs.insert(body);
-
-  const savedBlog = await blogs.view('blog', 'by_id', { key: response.id });
-
-  return savedBlog.rows[0].value;
+  return updatedBlog.rows[0].value;
 };
 
 module.exports = {
   save,
   find,
+  findOne,
   destroy,
   update,
 };

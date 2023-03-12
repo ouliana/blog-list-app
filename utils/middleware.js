@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const logger = require('./logger');
-const common = require('../models/common');
+const users = require('../models/users');
 
 const requestLogger = (request, response, next) => {
   logger.info('Method:', request.method);
@@ -30,7 +30,7 @@ const userExtractor = async (request, response, next) => {
     return response.status(401).json({ error: 'token invalid' });
   }
 
-  request.user = await common.findById(decodedToken.id, 'users');
+  request.user = await users.findOne(decodedToken.id, 'full_info');
 
   next();
 };

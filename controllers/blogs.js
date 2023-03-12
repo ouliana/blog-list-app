@@ -2,19 +2,18 @@ const blogsRouter = require('express').Router();
 const middleware = require('../utils/middleware');
 const blogs = require('../models/blogs');
 const users = require('../models/users');
-const common = require('../models/common');
 
-blogsRouter.get('/', async (req, res) => {
-  const entries = await blogs.find(req, res);
-  res.status(200).send(entries);
+blogsRouter.get('/', async (request, response) => {
+  const data = await blogs.find();
+  response.status(200).send(data);
 });
 
-blogsRouter.get('/:id', async (req, res) => {
-  const entry = await common.findById(req.params.id, 'blogs');
-  if (entry) {
-    res.send(entry);
+blogsRouter.get('/:id', async (request, response) => {
+  const data = await blogs.findOne(request.params.id, 'to_show');
+  if (data) {
+    response.send(data);
   } else {
-    res.status(404).end();
+    response.status(404).end();
   }
 });
 
@@ -23,15 +22,9 @@ blogsRouter.delete(
   middleware.tokenExtractor,
   middleware.userExtractor,
   async (request, response) => {
-    console.log('request.user: ', request.user);
     await blogs.destroy(request.params.id);
 
-    const user = await common.findById(request.user.id, 'users');
-    const blogsToUpdate = user.blogs.filter(
-      blog => blog.id !== request.params.id
-    );
-
-    await users.updateBlogs(user.id, blogsToUpdate);
+    await users.updateBlogs(request.user.id, request.params.id, 'delete');
 
     response.status(204).end();
   }
@@ -42,29 +35,29 @@ blogsRouter.post(
   middleware.tokenExtractor,
   middleware.userExtractor,
   async (request, response) => {
-    const body = request.body;
-
-    const user = await common.findById(request.user.id, 'users');
     const blog = {
-      ...body,
-      date: body.date ?? new Date(),
-      likes: body.likes ?? 0,
-      user: user.id,
+      ...request.body,
+      date: new Date(),
+      likes: 0,
+      user: request.user.id,
     };
 
-    const createdBlog = await blogs.save(blog);
-    const blogsToUpdate = user.blogs.concat(createdBlog.id);
+    const savedBlog = await blogs.save(blog);
+    await users.updateBlogs(request.user.id, savedBlog.id, 'insert');
 
-    await users.updateBlogs(user.id, blogsToUpdate);
-
-    response.status(201).json(createdBlog);
+    response.status(201).json(savedBlog);
   }
 );
 
-blogsRouter.put('/:id', async (request, response) => {
-  const updatedBlog = await blogs.update(request);
+blogsRouter.put(
+  '/:id',
+  middleware.tokenExtractor,
+  middleware.userExtractor,
+  async (request, response) => {
+    const updatedBlog = await blogs.update(request);
 
-  response.send(updatedBlog);
-});
+    response.status(200).json(updatedBlog);
+  }
+);
 
 module.exports = blogsRouter;

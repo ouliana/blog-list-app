@@ -76,13 +76,28 @@ const blogDesignDoc = {
   _id: '_design/blog',
   views: {
     by_id: {
-      map: 'function(doc){ emit(doc._id, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes, id: doc._id, rev: doc._rev})}',
+      map: 'function(doc){ emit(doc._id, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes, id: doc._id})}',
     },
     by_date: {
-      map: 'function(doc){ emit(doc.date, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes, id: doc._id, rev: doc._rev})}',
+      map: 'function(doc){ emit(doc.date, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes, id: doc._id})}',
+    },
+    to_show: {
+      map: 'function(doc){ emit(doc._id, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes, id: doc._id})}',
+    },
+    to_update: {
+      map: 'function(doc){ emit(doc._id, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes})}',
+    },
+    ids_for_user: {
+      map: 'function(doc){ emit(doc.user, doc._id)}',
+    },
+    for_user: {
+      map: 'function(doc){ emit(doc._id, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, likes: doc.likes})}',
     },
     by_author: {
-      map: 'function(doc){ emit(doc.author, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes, id: doc._id})}',
+      map: 'function(doc){ emit(doc.author, doc._id)}',
+    },
+    for_test_to_compare: {
+      map: 'function(doc){ emit(doc._id, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, likes: doc.likes})}',
     },
   },
   updates: {
@@ -100,17 +115,29 @@ const userDesignDoc = {
     by_username: {
       map: 'function(doc){ emit(doc.username, {blogs: doc.blogs, username: doc.username, name: doc.name, id: doc._id, rev: doc._rev})}',
     },
-    by_name: {
+    id_by_name: {
       map: 'function(doc){ emit(doc.name,  doc._id)}',
     },
-    idbyusername: {
+    id_by_username: {
       map: 'function(doc){ emit(doc.username, doc._id)}',
     },
-    user_info: {
-      map: 'function(doc){ emit(doc.username, {id: doc._id, username: doc.username, name: doc.name, passwordHash: doc.passwordHash})}',
+    for_token: {
+      map: 'function(doc){ emit(doc.username, {username: doc.username, id: doc._id})}',
     },
-    user_for_test_api: {
-      map: 'function(doc){ emit(doc.name, {id: doc._id, blogs: doc.blogs})}',
+    full_info: {
+      map: 'function(doc){ emit(doc._id, {id: doc._id, username: doc.username, name: doc.name, passwordHash: doc.passwordHash})}',
+    },
+    for_blog: {
+      map: 'function(doc){ emit(doc._id, {username: doc.username, name: doc.name, id: doc._id})}',
+    },
+    for_api: {
+      map: 'function(doc){ emit(doc._id, doc.blogs)}',
+    },
+    for_test_api: {
+      map: 'function(doc){ emit(doc.name, {blogs: doc.blogs, id: doc._id})}',
+    },
+    to_show: {
+      map: 'function(doc){ emit(doc._id, {notes: doc.blogs, username: doc.username, name: doc.name, id: doc._id})}',
     },
   },
   updates: {
@@ -137,72 +164,64 @@ const getHashes = async () => {
   return result;
 };
 
-const findUserBlogs = async () => {
-  const blogs = nano.use(config.DB_NAME);
-
-  const usersBlogs = await Promise.all(
-    initialUsers.map(
-      async user =>
-        await blogs.view('blog', 'by_author', {
-          key: user.name,
-        })
-    )
-  );
-
-  return usersBlogs.map(blog => blog.rows.map(r => r.value.id));
-};
-
 const saveUsers = async () => {
-  const users = nano.use(config.DB_USERS);
+  const dbUsers = nano.use(config.DB_USERS);
 
   const hashes = await getHashes();
-  const userBlogs = await findUserBlogs();
 
   const usersToPopulate = initialUsers.map((user, index) => ({
-    blogs: userBlogs[index],
+    blogs: [],
     username: user.username,
     name: user.name,
     passwordHash: hashes[index],
   }));
 
-  const response = await users.bulk({ docs: usersToPopulate });
+  const response = await dbUsers.bulk({ docs: usersToPopulate });
 
   return response;
-};
-
-const findCreators = async () => {
-  const users = nano.use(config.DB_USERS);
-
-  const creators = await Promise.all(
-    initialBlogs.map(
-      async blog => await users.view('user', 'by_name', { key: blog.author })
-    )
-  );
-
-  return creators.map(c => c.rows[0].value);
 };
 
 const saveBlogs = async () => {
-  const blogs = nano.use(config.DB_NAME);
+  const dbBlogs = nano.use(config.DB_NAME);
+  const dbUsers = nano.use(config.DB_USERS);
 
-  const response = await blogs.bulk({ docs: initialBlogs });
-  return response;
+  const promises = initialBlogs.map(async blog => {
+    const data = await dbUsers.view('user', 'id_by_name', { key: blog.author });
+    const userId = data.rows[0].value;
+
+    const blogToInsert = {
+      ...blog,
+      user: userId,
+    };
+    await dbBlogs.insert(blogToInsert);
+  });
+
+  await Promise.all(promises);
 };
 
-const populateBlogs = async () => {
-  const blogs = nano.use(config.DB_NAME);
+const setBlogsToUsers = async () => {
+  const dbBlogs = nano.use(config.DB_NAME);
+  const dbUsers = nano.use(config.DB_USERS);
 
-  const creators = await findCreators();
+  const data = await dbUsers.view('user', 'for_test_api');
+  const users = data.rows.map(row => row.value);
 
-  const doclist = await blogs.list({ include_docs: true });
-  const onlyDocs = doclist.rows.filter(doc => doc.id !== '_design/blog');
+  const promises = users.map(async user => {
+    const data = await dbBlogs.view('blog', 'ids_for_user', {
+      key: user.id,
+    });
 
-  const blogsToPopulate = onlyDocs.map((entry, index) => ({
-    ...entry.doc,
-    user: creators[index],
-  }));
+    const userBlogs = data.rows.map(row => row.value);
 
-  const response = await blogs.bulk({ docs: blogsToPopulate });
+    const response = await dbUsers.atomic('user', 'inplace', user.id, {
+      field: 'blogs',
+      value: userBlogs,
+    });
+
+    return response;
+  });
+
+  const response = await Promise.all(promises);
   return response;
 };
 
@@ -239,16 +258,21 @@ const initialize = async () => {
   await clear(config.DB_USERS, '_design/user');
   await clear(config.DB_NAME, '_design/blog');
 
-  await saveBlogs();
   await saveUsers();
-  await populateBlogs();
+  await saveBlogs();
+  await setBlogsToUsers();
+
+  const passwordHash = await bcrypt.hash('sekret', 10);
+  const user = { notes: [], username: 'root', passwordHash };
+  const db = nano.use(config.DB_USERS);
+  await db.insert(user);
 };
 
 const getToken = async () => {
   const users = nano.use(config.DB_USERS);
   const username = 'michaelchan';
 
-  const response = await users.view('user', 'user_info', {
+  const response = await users.view('user', 'for_token', {
     key: username,
   });
 

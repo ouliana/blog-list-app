@@ -36,6 +36,7 @@ describe('inserting a new blog', () => {
   });
 
   test('succeds with valid data', async () => {
+    const blogsAtStart = await helper.blogsInDb();
     await api
       .post('/api/blogs')
       .set('Authorization', `bearer ${token}`)
@@ -44,7 +45,7 @@ describe('inserting a new blog', () => {
       .expect('Content-Type', /application\/json/);
 
     const blogsAtEnd = await helper.blogsInDb();
-    expect(blogsAtEnd).toHaveLength(initHelper.initialBlogs.length + 1);
+    expect(blogsAtEnd).toHaveLength(blogsAtStart.length + 1);
 
     const finder = item => item.title === helper.canonic;
 
@@ -63,11 +64,8 @@ describe('inserting a new blog', () => {
       .send(helper.nonExistingLikes);
 
     const blogsAtEnd = await helper.blogsInDb();
-    console.log('blogsAtEnd: ', blogsAtEnd);
     const finder = item => item.title === helper.canonic;
     const blog = blogsAtEnd.find(finder);
-
-    console.log('blog found: ', blog);
 
     expect(blog.likes).toBe(0);
   });
@@ -78,6 +76,7 @@ describe('inserting a new blog', () => {
       .set('Authorization', `bearer ${token}`)
       .send(helper.missingTitle)
       .expect(400);
+
     await api
       .post('/api/blogs')
       .set('Authorization', `bearer ${token}`)
@@ -119,6 +118,10 @@ describe('deletion of a blog', () => {
 });
 
 describe('updating a blog', () => {
+  let token;
+  beforeEach(async () => {
+    token = await initHelper.getToken();
+  });
   test('succeeds with statuscode 200 if data is valid', async () => {
     const blogsAtStart = await helper.blogsInDb();
 
@@ -127,9 +130,15 @@ describe('updating a blog', () => {
       likes: 12,
     };
 
-    await api.put(`/api/blogs/${blogToUpdate.id}`).send(blogToUpdate);
+    const id = blogToUpdate.id;
+    delete blogToUpdate.id;
 
-    const updatedBlog = await helper.blogById(blogToUpdate.id);
+    await api
+      .put(`/api/blogs/${id}`)
+      .set('Authorization', `bearer ${token}`)
+      .send(blogToUpdate);
+
+    const updatedBlog = await helper.blogById(id);
 
     if (blogToUpdate.likes) {
       expect(updatedBlog.likes).toBe(blogToUpdate.likes);
@@ -142,10 +151,13 @@ describe('updating a blog', () => {
     const blogsAtStart = await helper.blogsInDb();
 
     const blogToUpdate = blogsAtStart[0];
+    const id = blogToUpdate.id;
+    delete blogToUpdate.id;
     delete blogToUpdate.title;
 
     await api
-      .put(`/api/blogs/${blogToUpdate.id}`)
+      .put(`/api/blogs/${id}`)
+      .set('Authorization', `bearer ${token}`)
       .send(blogToUpdate)
       .expect(400);
   });
