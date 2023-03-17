@@ -84,9 +84,6 @@ const blogDesignDoc = {
     to_show: {
       map: 'function(doc){ emit(doc._id, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes, id: doc._id})}',
     },
-    to_update: {
-      map: 'function(doc){ emit(doc._id, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes})}',
-    },
     ids_for_user: {
       map: 'function(doc){ emit(doc.user, doc._id)}',
     },
@@ -108,6 +105,7 @@ const blogDesignDoc = {
 
 const userDesignDoc = {
   _id: '_design/user',
+  _rev: '2-445ecf36fb4cf33aafbc9476e810c23a',
   views: {
     by_id: {
       map: 'function(doc){ emit(doc._id, {blogs: doc.blogs, username: doc.username, name: doc.name, id: doc._id, rev: doc._rev})}',
@@ -121,8 +119,8 @@ const userDesignDoc = {
     id_by_username: {
       map: 'function(doc){ emit(doc.username, doc._id)}',
     },
-    for_token: {
-      map: 'function(doc){ emit(doc.username, {username: doc.username, id: doc._id})}',
+    for_auth: {
+      map: 'function(doc){ emit(doc.username, {username: doc.username, name: doc.name, passwordHash: doc.passwordHash, id: doc._id})}',
     },
     full_info: {
       map: 'function(doc){ emit(doc._id, {id: doc._id, username: doc.username, name: doc.name, passwordHash: doc.passwordHash})}',

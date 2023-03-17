@@ -47,8 +47,9 @@ const findUserBlogs = async ids => {
   return result;
 };
 
-const findOne = async (id, view) => {
-  const doc = await dbUsers.view('user', view, { key: id });
+const findOne = async (findBy, view) => {
+  console.log({ findBy, view });
+  const doc = await dbUsers.view('user', view, { key: findBy });
   if (!doc.rows.length) return null;
 
   return doc.rows[0].value;
