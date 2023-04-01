@@ -1,8 +1,20 @@
 require('express-async-errors');
-const config = require('../utils/config');
-const nano = require('nano')(config.COUCHDB_URI);
-const Joi = require('joi');
-const ValidationError = require('../utils/errors/validation_error');
+var config = require('../utils/config');
+var nano = require('nano')(config.COUCHDB_URI);
+var Joi = require('joi');
+var ValidationError = require('../utils/errors/validation_error');
+
+// public API
+module.exports = {
+  save,
+  find,
+  findOne,
+  destroy,
+  update,
+  clear,
+};
+
+// implementation
 
 const schema = Joi.object({
   title: Joi.string().min(3).required(),
@@ -13,47 +25,47 @@ const schema = Joi.object({
   user: Joi.string(),
 });
 
-const validate = blog => {
-  const result = schema.validate(blog, { abortEarly: false });
+function validate(blog) {
+  var result = schema.validate(blog, { abortEarly: false });
   if (result.error) {
-    const message = result.error.details.map(d => d.message).join(', ');
+    var message = result.error.details.map(d => d.message).join(', ');
     result.error = message;
     throw new ValidationError(message);
   }
   return result;
-};
+}
 
-const dbBlogs = nano.use(config.DB_NAME);
+var dbBlogs = nano.use(config.DB_NAME);
+var designDocId = '_design/blog';
 
-const find = async () => {
-  const dbUsers = nano.use(config.DB_USERS);
+async function find() {
+  var data = await dbBlogs.view('blog', 'to_show');
+  if (!data.rows.length) return null;
 
-  const data = await dbBlogs.view('blog', 'to_show');
-
-  const promises = data.rows.map(async row => {
-    const userInfo = await dbUsers.view('user', 'for_blog', {
+  var mapUserDetailsToView = async row => {
+    var userDetails = await nano.use(config.DB_USERS).view('user', 'for_blog', {
       key: row.value.user,
     });
     return {
       ...row.value,
-      user: userInfo.rows[0].value,
+      user: userDetails.rows[0].value,
     };
-  });
+  };
 
-  const returnedNotes = await Promise.all(promises);
+  var promises = data.rows.map(mapUserDetailsToView);
 
-  return returnedNotes;
-};
+  var returnedBlogs = await Promise.all(promises);
 
-const findOne = async (id, view) => {
-  const dbUsers = nano.use(config.DB_USERS);
+  return returnedBlogs;
+}
 
-  const doc = await dbBlogs.view('blog', view, { key: id });
+async function findOne(id, view) {
+  var doc = await dbBlogs.view('blog', view, { key: id });
   if (!doc.rows.length) return null;
 
-  const blog = doc.rows[0].value;
+  var blog = doc.rows[0].value;
 
-  const userInfo = await dbUsers.view('user', 'for_blog', {
+  var userInfo = await nano.use(config.DB_USERS).view('user', 'for_blog', {
     key: blog.user,
   });
 
@@ -61,45 +73,47 @@ const findOne = async (id, view) => {
     ...blog,
     user: userInfo.rows[0].value,
   };
-};
+}
 
-const save = async blog => {
-  validate(blog);
+async function save(blog) {
+  var validationResult = validate(blog);
+  if (validationResult.error) throw new Error(validationResult.error);
 
-  const response = await dbBlogs.insert(blog);
+  var response = await dbBlogs.insert(blog);
 
-  const savedBlog = await dbBlogs.view('blog', 'to_show', {
+  var savedBlog = await dbBlogs.view('blog', 'to_show', {
     key: response.id,
   });
 
   return savedBlog.rows[0].value;
-};
+}
 
-const destroy = async id => {
-  const doc = await dbBlogs.get(id);
-  const result = await dbBlogs.destroy(doc._id, doc._rev);
+async function destroy(id) {
+  var doc = await dbBlogs.get(id);
+  var result = await dbBlogs.destroy(doc._id, doc._rev);
   return result;
-};
+}
 
-const update = async request => {
-  validate(request.body);
+async function update(id, body) {
+  validate(body);
 
-  await dbBlogs.atomic('blog', 'inplace', request.params.id, {
+  await dbBlogs.atomic('blog', 'inplace', id, {
     field: 'likes',
-    value: request.body.likes,
+    value: body.likes,
   });
 
-  const updatedBlog = await dbBlogs.view('blog', 'to_show', {
-    key: request.params.id,
+  var updatedBlog = await dbBlogs.view('blog', 'to_show', {
+    key: id,
   });
 
   return updatedBlog.rows[0].value;
-};
+}
 
-module.exports = {
-  save,
-  find,
-  findOne,
-  destroy,
-  update,
-};
+async function clear() {
+  var doclist = await dbBlogs.list();
+  var onlyDocs = doclist.rows.filter(doc => doc.id !== designDocId);
+
+  var promises = onlyDocs.map(doc => dbBlogs.destroy(doc.id, doc.value.rev));
+
+  await Promise.all(promises);
+}

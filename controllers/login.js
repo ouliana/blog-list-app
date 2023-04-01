@@ -1,13 +1,19 @@
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
-const loginRouter = require('express').Router();
-const users = require('../models/users');
+var jwt = require('jsonwebtoken');
+var bcrypt = require('bcrypt');
+var loginRouter = require('express').Router();
+var users = require('../models/users');
 
-loginRouter.post('/', async (request, response) => {
-  const { username, password } = request.body;
+// public API
+module.exports = loginRouter;
 
-  const user = await users.findOne(username, 'for_auth');
-  const passwordCorrect =
+// implementation
+
+loginRouter.post('/', async function saveUser(request, response) {
+  console.log('login router');
+  var { username, password } = request.body;
+
+  var user = await users.findOne(username, 'details_by_username');
+  var passwordCorrect =
     user === null ? false : await bcrypt.compare(password, user.passwordHash);
 
   if (!(user && passwordCorrect)) {
@@ -16,16 +22,15 @@ loginRouter.post('/', async (request, response) => {
     });
   }
 
-  const userForToken = {
+  var userForToken = {
     username: user.username,
     id: user.id,
   };
 
-  const token = jwt.sign(userForToken, process.env.SECRET);
+  var token = jwt.sign(userForToken, process.env.SECRET);
+  console.log('status: 200');
 
   response
     .status(200)
     .send({ token, username: user.username, name: user.name });
 });
-
-module.exports = loginRouter;

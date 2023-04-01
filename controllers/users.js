@@ -1,19 +1,20 @@
-const usersRouter = require('express').Router();
-const users = require('../models/users');
+var usersRouter = require('express').Router();
+var users = require('../models/users');
 
-usersRouter.get('/', async (request, response) => {
-  console.log('usersRouter.get');
-  const entries = await users.find();
-  response.send(entries);
+//public API
+module.exports = usersRouter;
+
+usersRouter.get('/', async function getUsersFromDb(request, response) {
+  var data = await users.find();
+  response.send(data);
 });
 
-usersRouter.post('/', async (request, response) => {
-  const user = request.body;
-  user.blogs = [];
+usersRouter.post('/', async function saveUserToDb(request, response) {
+  var user = request.body;
+
+  // check uniqueness, isUnique throws if not
   await users.isUnique(user.username);
 
-  const savedUser = await users.save(user);
+  var savedUser = await users.save(user);
   response.status(201).json(savedUser);
 });
-
-module.exports = usersRouter;

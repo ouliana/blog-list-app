@@ -1,8 +1,10 @@
 require('express-async-errors');
-const jwt = require('jsonwebtoken');
-const config = require('../utils/config');
-const bcrypt = require('bcrypt');
-const nano = require('nano')(config.COUCHDB_URI);
+var jwt = require('jsonwebtoken');
+var config = require('../utils/config');
+var bcrypt = require('bcrypt');
+var nano = require('nano')(config.COUCHDB_URI);
+
+//public API
 
 const initialBlogs = [
   {
@@ -72,6 +74,16 @@ const initialUsers = [
   },
 ];
 
+Object.assign(module.exports, {
+  initialBlogs,
+  initialUsers,
+  initialize,
+  getToken,
+  seed,
+});
+
+// private implementation
+
 const blogDesignDoc = {
   _id: '_design/blog',
   views: {
@@ -104,12 +116,7 @@ const blogDesignDoc = {
 };
 
 const userDesignDoc = {
-  _id: '_design/user',
-  _rev: '2-445ecf36fb4cf33aafbc9476e810c23a',
   views: {
-    by_id: {
-      map: 'function(doc){ emit(doc._id, {blogs: doc.blogs, username: doc.username, name: doc.name, id: doc._id, rev: doc._rev})}',
-    },
     by_username: {
       map: 'function(doc){ emit(doc.username, {blogs: doc.blogs, username: doc.username, name: doc.name, id: doc._id, rev: doc._rev})}',
     },
@@ -119,16 +126,19 @@ const userDesignDoc = {
     id_by_username: {
       map: 'function(doc){ emit(doc.username, doc._id)}',
     },
-    for_auth: {
-      map: 'function(doc){ emit(doc.username, {username: doc.username, name: doc.name, passwordHash: doc.passwordHash, id: doc._id})}',
+    for_token: {
+      map: 'function(doc){ emit(doc.username, {username: doc.username, id: doc._id})}',
     },
-    full_info: {
+    details_by_id: {
       map: 'function(doc){ emit(doc._id, {id: doc._id, username: doc.username, name: doc.name, passwordHash: doc.passwordHash})}',
+    },
+    details_by_username: {
+      map: 'function(doc){ emit(doc.username, {id: doc._id, username: doc.username, name: doc.name, passwordHash: doc.passwordHash})}',
     },
     for_blog: {
       map: 'function(doc){ emit(doc._id, {username: doc.username, name: doc.name, id: doc._id})}',
     },
-    for_api: {
+    blogs_by_id: {
       map: 'function(doc){ emit(doc._id, doc.blogs)}',
     },
     for_test_api: {
@@ -144,115 +154,101 @@ const userDesignDoc = {
   },
 };
 
-const clear = async (dbName, designDocId) => {
-  const db = nano.use(dbName);
+var dbBlogs = nano.use(config.DB_NAME);
+var dbUsers = nano.use(config.DB_USERS);
 
-  const doclist = await db.list();
-  const onlyDocs = doclist.rows.filter(doc => doc.id !== designDocId);
+async function clear(dbName, designDocId) {
+  var db = nano.use(dbName);
 
-  const promises = onlyDocs.map(doc => db.destroy(doc.id, doc.value.rev));
+  var doclist = await db.list();
+  var onlyDocs = doclist.rows.filter(doc => doc.id !== designDocId);
+
+  var promises = onlyDocs.map(doc => db.destroy(doc.id, doc.value.rev));
 
   await Promise.all(promises);
-};
+}
 
-const getHashes = async () => {
-  const hashed = initialUsers.map(user => bcrypt.hash(user.password, 10));
+async function getHashes() {
+  var hashed = initialUsers.map(user => bcrypt.hash(user.password, 10));
 
-  const result = await Promise.all(hashed);
+  var result = await Promise.all(hashed);
   return result;
-};
+}
 
-const saveUsers = async () => {
-  const dbUsers = nano.use(config.DB_USERS);
+async function saveUsers() {
+  var hashes = await getHashes();
 
-  const hashes = await getHashes();
-
-  const usersToPopulate = initialUsers.map((user, index) => ({
+  var usersToPopulate = initialUsers.map((user, index) => ({
     blogs: [],
     username: user.username,
     name: user.name,
     passwordHash: hashes[index],
   }));
 
-  const response = await dbUsers.bulk({ docs: usersToPopulate });
+  var response = await dbUsers.bulk({ docs: usersToPopulate });
 
   return response;
-};
+}
 
-const saveBlogs = async () => {
-  const dbBlogs = nano.use(config.DB_NAME);
-  const dbUsers = nano.use(config.DB_USERS);
+async function saveBlogs() {
+  var mapBlogsToInsert = async blog => {
+    var data = await dbUsers.view('user', 'id_by_name', { key: blog.author });
+    var userId = data.rows[0].value;
 
-  const promises = initialBlogs.map(async blog => {
-    const data = await dbUsers.view('user', 'id_by_name', { key: blog.author });
-    const userId = data.rows[0].value;
-
-    const blogToInsert = {
+    var blogToInsert = {
       ...blog,
       user: userId,
     };
     await dbBlogs.insert(blogToInsert);
-  });
+  };
+
+  var promises = initialBlogs.map(mapBlogsToInsert);
 
   await Promise.all(promises);
-};
+}
 
-const setBlogsToUsers = async () => {
-  const dbBlogs = nano.use(config.DB_NAME);
-  const dbUsers = nano.use(config.DB_USERS);
+async function setBlogsToUsers() {
+  var data = await dbUsers.view('user', 'for_test_api');
+  var users = data.rows.map(row => row.value);
 
-  const data = await dbUsers.view('user', 'for_test_api');
-  const users = data.rows.map(row => row.value);
-
-  const promises = users.map(async user => {
-    const data = await dbBlogs.view('blog', 'ids_for_user', {
+  var mapBlogsIdsForUser = async user => {
+    var data = await dbBlogs.view('blog', 'ids_for_user', {
       key: user.id,
     });
 
-    const userBlogs = data.rows.map(row => row.value);
+    var userBlogs = data.rows.map(row => row.value);
 
-    const response = await dbUsers.atomic('user', 'inplace', user.id, {
+    var response = await dbUsers.atomic('user', 'inplace', user.id, {
       field: 'blogs',
       value: userBlogs,
     });
 
     return response;
-  });
+  };
 
-  const response = await Promise.all(promises);
+  var response = await Promise.all(users.map(mapBlogsIdsForUser));
   return response;
-};
+}
 
-const createDb = async dbName => {
+async function createDb(dbName) {
   await nano.db.create(dbName);
 
-  let designDocBody, designDocId;
+  var designDocBody = dbName === config.DB_NAME ? blogDesignDoc : userDesignDoc;
+  var designDocId = dbName === config.DB_NAME ? '_design/blog' : '_design/user';
 
-  switch (dbName) {
-    case config.DB_NAME:
-      designDocBody = blogDesignDoc;
-      designDocId = '_design/blog';
-      break;
-    case config.DB_USERS:
-      designDocBody = userDesignDoc;
-      designDocId = '_design/user';
-      break;
-    default:
-      throw new Error('invalid database name');
-  }
-
-  const db = nano.use(dbName);
+  var db = nano.use(dbName);
   await db.insert(designDocBody, designDocId);
-};
+}
 
-const initialize = async () => {
-  const list = await nano.db.list();
+async function initialize() {
+  var list = await nano.db.list();
   if (!list.includes(config.DB_USERS)) {
     await createDb(config.DB_USERS);
   }
   if (!list.includes(config.DB_NAME)) {
     await createDb(config.DB_NAME);
   }
+
   await clear(config.DB_USERS, '_design/user');
   await clear(config.DB_NAME, '_design/blog');
 
@@ -260,31 +256,44 @@ const initialize = async () => {
   await saveBlogs();
   await setBlogsToUsers();
 
-  const passwordHash = await bcrypt.hash('sekret', 10);
-  const user = { notes: [], username: 'root', passwordHash };
-  const db = nano.use(config.DB_USERS);
-  await db.insert(user);
-};
+  var passwordHash = await bcrypt.hash('mypass', 10);
+  var user = {
+    blogs: [],
+    username: 'ouliana',
+    name: 'Ouliana Kotik',
+    passwordHash,
+  };
 
-const getToken = async () => {
-  const users = nano.use(config.DB_USERS);
+  await dbUsers.insert(user);
+}
+
+async function seed() {
+  await saveUsers();
+  await saveBlogs();
+  await setBlogsToUsers();
+
+  var passwordHash = await bcrypt.hash('mypass', 10);
+  var user = {
+    blogs: [],
+    username: 'ouliana',
+    name: 'Ouliana Kotik',
+    passwordHash,
+  };
+
+  await dbUsers.insert(user);
+}
+
+async function getToken() {
   const username = 'michaelchan';
 
-  const response = await users.view('user', 'for_token', {
+  var data = await dbUsers.view('user', 'for_token', {
     key: username,
   });
 
-  const userForToken = {
-    username: response.rows[0].value.username,
-    id: response.rows[0].value.id,
+  var userForToken = {
+    username: data.rows[0].value.username,
+    id: data.rows[0].value.id,
   };
 
   return jwt.sign(userForToken, process.env.SECRET);
-};
-
-module.exports = {
-  initialBlogs,
-  initialUsers,
-  initialize,
-  getToken,
-};
+}

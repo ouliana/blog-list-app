@@ -1,15 +1,19 @@
-const blogsRouter = require('express').Router();
-const middleware = require('../utils/middleware');
-const blogs = require('../models/blogs');
-const users = require('../models/users');
+var blogsRouter = require('express').Router();
+var middleware = require('../utils/middleware');
+var blogs = require('../models/blogs');
+var users = require('../models/users');
 
+// public API
+module.exports = blogsRouter;
+
+// implementation
 blogsRouter.get('/', async (request, response) => {
-  const data = await blogs.find();
+  var data = await blogs.find();
   response.status(200).send(data);
 });
 
 blogsRouter.get('/:id', async (request, response) => {
-  const data = await blogs.findOne(request.params.id, 'to_show');
+  var data = await blogs.findOne(request.params.id, 'to_show');
   if (data) {
     response.send(data);
   } else {
@@ -21,7 +25,7 @@ blogsRouter.delete(
   '/:id',
   middleware.tokenExtractor,
   middleware.userExtractor,
-  async (request, response) => {
+  async function deleteBlog(request, response) {
     await blogs.destroy(request.params.id);
 
     await users.updateBlogs(request.user.id, request.params.id, 'delete');
@@ -34,15 +38,17 @@ blogsRouter.post(
   '/',
   middleware.tokenExtractor,
   middleware.userExtractor,
-  async (request, response) => {
-    const blog = {
+  async function saveBlog(request, response) {
+    var blog = {
       ...request.body,
       date: new Date(),
-      likes: 0,
       user: request.user.id,
     };
+    if (!Object.hasOwn(request.body, 'likes')) {
+      blog.likes = 0;
+    }
 
-    const savedBlog = await blogs.save(blog);
+    var savedBlog = await blogs.save(blog);
     await users.updateBlogs(request.user.id, savedBlog.id, 'insert');
 
     response.status(201).json(savedBlog);
@@ -53,11 +59,11 @@ blogsRouter.put(
   '/:id',
   middleware.tokenExtractor,
   middleware.userExtractor,
-  async (request, response) => {
-    const updatedBlog = await blogs.update(request);
+  async function updateBlog(request, response) {
+    var id = request.params.id;
+    var body = request.body;
+    var updatedBlog = await blogs.update(id, body);
 
     response.status(200).json(updatedBlog);
   }
 );
-
-module.exports = blogsRouter;

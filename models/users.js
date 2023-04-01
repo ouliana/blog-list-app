@@ -1,12 +1,28 @@
 require('express-async-errors');
-const bcrypt = require('bcrypt');
-const config = require('../utils/config');
-const nano = require('nano')(config.COUCHDB_URI);
-const Joi = require('joi');
-const UniquenessError = require('../utils/errors/uniqueness_error');
-const ValidationError = require('../utils/errors/validation_error');
+var bcrypt = require('bcrypt');
+var config = require('../utils/config');
+var nano = require('nano')(config.COUCHDB_URI);
+var Joi = require('joi');
+var UniquenessError = require('../utils/errors/uniqueness_error');
+var ValidationError = require('../utils/errors/validation_error');
 
-const dbUsers = nano.use(config.DB_USERS);
+// public API
+
+Object.assign(module.exports, {
+  isUnique,
+  validate,
+  save,
+  find,
+  findOne,
+  destroy,
+  updateBlogs,
+  clear,
+});
+
+// implementarion
+
+var dbUsers = nano.use(config.DB_USERS);
+var designDocId = '_design/user';
 
 const schema = Joi.object({
   username: Joi.string().min(3).required(),
@@ -15,89 +31,86 @@ const schema = Joi.object({
   blogs: Joi.array(),
 });
 
-const validate = user => {
-  const result = schema.validate(user, { abortEarly: false });
+function validate(user) {
+  var result = schema.validate(user, { abortEarly: false });
   if (result.error) {
-    const message = result.error.details.map(d => d.message).join(', ');
+    var message = result.error.details.map(d => d.message).join(', ');
     throw new ValidationError(message);
   }
   return result;
-};
+}
 
-const isUnique = async username => {
-  const response = await dbUsers.view('user', 'id_by_username', {
+async function isUnique(username) {
+  var data = await dbUsers.view('user', 'id_by_username', {
     key: username,
   });
-
-  if (response.rows.length) {
+  console.log({ username, data });
+  if (data.rows.length) {
     throw new UniquenessError('expected `username` to be unique');
   }
-};
+}
 
-const findUserBlogs = async ids => {
-  const dbBlogs = nano.use(config.DB_NAME);
-
-  const promises = ids.map(id => {
-    const data = dbBlogs.view('blog', 'for_user', { key: id });
+async function findUserBlogs(blogIds) {
+  var mapBlogsToUser = id => {
+    const data = nano.use(config.DB_NAME).view('blog', 'for_user', { key: id });
     return data.rows[0].value;
-  });
+  };
 
-  const result = await Promise.all(promises);
+  var result = await Promise.all(blogIds.map(mapBlogsToUser));
 
   return result;
-};
+}
 
-const findOne = async (findBy, view) => {
-  console.log({ findBy, view });
-  const doc = await dbUsers.view('user', view, { key: findBy });
+async function findOne(findBy, view) {
+  var doc = await dbUsers.view('user', view, { key: findBy });
   if (!doc.rows.length) return null;
 
   return doc.rows[0].value;
-};
+}
 
-const find = async () => {
-  const data = await dbUsers.view('user', 'to_show');
+async function find() {
+  var data = await dbUsers.view('user', 'to_show');
 
-  const promises = data.rows.map(async row => {
+  var mapBlogDetailsToUser = async row => {
     if (row.value.blogs.length > 0) {
-      const userBlogs = await findUserBlogs(row.value.blogs);
+      let userBlogs = await findUserBlogs(row.value.blogs);
       row.value.blogs = userBlogs;
     }
     return row.value;
-  });
+  };
 
-  const returnedUsers = await Promise.all(promises);
+  var returnedUsers = await Promise.all(data.rows.map(mapBlogDetailsToUser));
 
   return returnedUsers;
-};
+}
 
-const save = async user => {
-  const validation = validate(user);
+async function save(user) {
+  var validation = validate(user);
   if (validation.error) throw new Error(validation.error);
 
   const saltRounds = 10;
   user.passwordHash = await bcrypt.hash(user.password, saltRounds);
   delete user.password;
 
-  const response = await dbUsers.insert(user);
-  const data = await dbUsers.view('user', 'to_show', {
+  var response = await dbUsers.insert(user);
+  var data = await dbUsers.view('user', 'to_show', {
     key: response.id,
   });
 
   return data.rows[0].value;
-};
+}
 
-const destroy = async id => {
-  const doc = await dbUsers.get(id);
+async function destroy(id) {
+  var doc = await dbUsers.get(id);
   await dbUsers.destroy(doc._id, doc._rev);
-};
+}
 
-const updateBlogs = async (id, blogId, action) => {
+async function updateBlogs(id, blogId, action) {
   console.log({ id, blogId, action });
-  const data = await dbUsers.view('user', 'for_api', { key: id });
-  const currentBlogs = data.rows[0].value;
+  var data = await dbUsers.view('user', 'blogs_by_id', { key: id });
+  var currentBlogs = data.rows[0].value ?? [];
 
-  const blogs =
+  var blogs =
     action === 'insert'
       ? currentBlogs.concat(blogId)
       : currentBlogs.filter(blog => blog.id !== blogId);
@@ -106,14 +119,13 @@ const updateBlogs = async (id, blogId, action) => {
     field: 'blogs',
     value: blogs,
   });
-};
+}
 
-module.exports = {
-  isUnique,
-  validate,
-  save,
-  find,
-  findOne,
-  destroy,
-  updateBlogs,
-};
+async function clear() {
+  var doclist = await dbUsers.list();
+  var onlyDocs = doclist.rows.filter(doc => doc.id !== designDocId);
+
+  var promises = onlyDocs.map(doc => dbUsers.destroy(doc.id, doc.value.rev));
+
+  await Promise.all(promises);
+}
