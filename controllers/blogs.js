@@ -39,6 +39,7 @@ blogsRouter.post(
   middleware.tokenExtractor,
   middleware.userExtractor,
   async function saveBlog(request, response) {
+    console.log('user: ', request.user);
     var blog = {
       ...request.body,
       date: new Date(),

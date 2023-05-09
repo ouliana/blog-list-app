@@ -17,6 +17,7 @@ Object.assign(module.exports, {
   destroy,
   updateBlogs,
   clear,
+  findOneToShow,
 });
 
 // implementarion
@@ -51,8 +52,10 @@ async function isUnique(username) {
 }
 
 async function findUserBlogs(blogIds) {
-  var mapBlogsToUser = id => {
-    const data = nano.use(config.DB_NAME).view('blog', 'for_user', { key: id });
+  const mapBlogsToUser = async id => {
+    const data = await nano
+      .use(config.DB_NAME)
+      .view('blog', 'for_user', { key: id });
     return data.rows[0].value;
   };
 
@@ -68,10 +71,22 @@ async function findOne(findBy, view) {
   return doc.rows[0].value;
 }
 
-async function find() {
-  var data = await dbUsers.view('user', 'to_show');
+async function findOneToShow(findBy, view) {
+  const doc = await dbUsers.view('user', view, { key: findBy });
+  if (!doc.rows.length) return null;
 
-  var mapBlogDetailsToUser = async row => {
+  const user = doc.rows[0].value;
+
+  const userBlogs = await findUserBlogs(user.blogs);
+  user.blogs = userBlogs;
+
+  return user;
+}
+
+async function find() {
+  const data = await dbUsers.view('user', 'to_show');
+
+  const mapBlogDetailsToUser = async row => {
     if (row.value.blogs.length > 0) {
       let userBlogs = await findUserBlogs(row.value.blogs);
       row.value.blogs = userBlogs;

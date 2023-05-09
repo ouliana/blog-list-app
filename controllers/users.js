@@ -9,6 +9,15 @@ usersRouter.get('/', async function getUsersFromDb(request, response) {
   response.send(data);
 });
 
+usersRouter.get('/:id', async (request, response) => {
+  var data = await users.findOneToShow(request.params.id, 'to_show');
+  if (data) {
+    response.send(data);
+  } else {
+    response.status(404).end();
+  }
+});
+
 usersRouter.post('/', async function saveUserToDb(request, response) {
   var user = request.body;
 
