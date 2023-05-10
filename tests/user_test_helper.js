@@ -20,7 +20,7 @@ const nonExistingId = async () => {
 const usersInDb = async () => {
   const users = nano.use(config.DB_USERS);
 
-  const data = await users.view('user', 'to_show');
+  const data = await users.view('user', 'by_id');
 
   return data.rows.map(row => row.value);
 };

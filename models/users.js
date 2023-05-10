@@ -96,7 +96,7 @@ async function find() {
 
   var returnedUsers = await Promise.all(data.rows.map(mapBlogDetailsToUser));
 
-  return returnedUsers;
+  return returnedUsers.filter(user => user.username !== 'root');
 }
 
 async function save(user) {
@@ -131,7 +131,6 @@ async function updateBlogs(id, blogId, action) {
       blogs = currentBlogs.concat(blogId);
       break;
     case 'delete':
-      console.log('currentBlogs', currentBlogs);
       blogs = currentBlogs.filter(blog => blog !== blogId);
       console.log('blogs', blogs);
       break;

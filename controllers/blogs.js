@@ -13,7 +13,7 @@ blogsRouter.get('/', async (request, response) => {
 });
 
 blogsRouter.get('/:id', async (request, response) => {
-  var data = await blogs.findOne(request.params.id, 'to_show');
+  var data = await blogs.findOne(request.params.id, 'by_id');
   if (data) {
     response.send(data);
   } else {

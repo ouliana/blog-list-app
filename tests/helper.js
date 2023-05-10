@@ -93,9 +93,6 @@ const blogDesignDoc = {
     by_date: {
       map: 'function(doc){ emit(doc.date, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes, id: doc._id})}',
     },
-    to_show: {
-      map: 'function(doc){ emit(doc._id, {url: doc.url, title: doc.title, author:doc.author, date: doc.date, user: doc.user, likes: doc.likes, id: doc._id})}',
-    },
     ids_for_user: {
       map: 'function(doc){ emit(doc.user, doc._id)}',
     },

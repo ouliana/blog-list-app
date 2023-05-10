@@ -23,6 +23,7 @@ const schema = Joi.object({
   likes: Joi.number(),
   date: Joi.date(),
   user: Joi.string(),
+  comments: Joi.array(),
 });
 
 function validate(blog) {
@@ -39,7 +40,7 @@ var dbBlogs = nano.use(config.DB_NAME);
 var designDocId = '_design/blog';
 
 async function find() {
-  var data = await dbBlogs.view('blog', 'to_show');
+  var data = await dbBlogs.view('blog', 'by_id');
   if (!data.rows.length) return null;
 
   var mapUserDetailsToView = async row => {
@@ -81,7 +82,7 @@ async function save(blog) {
 
   var response = await dbBlogs.insert(blog);
 
-  var savedBlog = await dbBlogs.view('blog', 'to_show', {
+  var savedBlog = await dbBlogs.view('blog', 'by_id', {
     key: response.id,
   });
 
@@ -102,7 +103,7 @@ async function update(id, body) {
     value: body.likes,
   });
 
-  var updatedBlog = await dbBlogs.view('blog', 'to_show', {
+  var updatedBlog = await dbBlogs.view('blog', 'by_id', {
     key: id,
   });
 

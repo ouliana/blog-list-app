@@ -53,7 +53,7 @@ const nonExistingId = async () => {
 
 const blogsInDb = async () => {
   const dbBlogs = nano.use(config.DB_NAME);
-  const data = await dbBlogs.view('blog', 'to_show');
+  const data = await dbBlogs.view('blog', 'by_id');
 
   return data.rows.map(row => row.value);
 };
@@ -68,7 +68,7 @@ const blogToCompare = async id => {
 
 const blogById = async id => {
   const dbBlogs = nano.use(config.DB_NAME);
-  const data = await dbBlogs.view('blog', 'to_show', { key: id });
+  const data = await dbBlogs.view('blog', 'by_id', { key: id });
 
   return data.rows[0].value;
 };
