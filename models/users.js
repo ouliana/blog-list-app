@@ -124,11 +124,20 @@ async function updateBlogs(id, blogId, action) {
   console.log({ id, blogId, action });
   var data = await dbUsers.view('user', 'blogs_by_id', { key: id });
   var currentBlogs = data.rows[0].value ?? [];
+  var blogs = [];
 
-  var blogs =
-    action === 'insert'
-      ? currentBlogs.concat(blogId)
-      : currentBlogs.filter(blog => blog.id !== blogId);
+  switch (action) {
+    case 'insert':
+      blogs = currentBlogs.concat(blogId);
+      break;
+    case 'delete':
+      console.log('currentBlogs', currentBlogs);
+      blogs = currentBlogs.filter(blog => blog !== blogId);
+      console.log('blogs', blogs);
+      break;
+    default:
+      return;
+  }
 
   await dbUsers.atomic('user', 'inplace', id, {
     field: 'blogs',
